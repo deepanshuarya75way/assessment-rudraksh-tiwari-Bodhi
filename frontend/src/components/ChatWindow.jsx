@@ -21,6 +21,9 @@ import "../styles/chat.css";
 // SOCKET
 // =========================================================
 
+const savedUser = JSON.parse(localStorage.getItem("user")||"null")
+const userId = savedUser?._id||savedUser?.id||savedUser?.userId;
+
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL || "https://bodhi-5wnm.onrender.com/";
 

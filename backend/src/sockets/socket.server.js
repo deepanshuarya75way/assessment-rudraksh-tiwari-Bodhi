@@ -431,7 +431,7 @@ function initSocketServer(httpServer) {
     // AI MESSAGE
     // =====================================================
 
-    socket.on("ai-message", async (messagePayload) => {
+    socket.on("e2ee-message", async (messagePayload) => {
       try {
         console.log("Message Payload:", messagePayload);
 
@@ -443,9 +443,83 @@ function initSocketServer(httpServer) {
 
         const chatId = messagePayload.chat;
 
+        const envelope = messagePayload.envelope;
+
         const messageType = messagePayload.type || "text";
 
         const messageMode = messagePayload.mode || "chat";
+
+        if(!envelope || typeof envelope !== "object" || Array.isArray(envelope)){
+          return socket.emit("e2ee-message-error",{
+            message:"A valid chat ID is required"
+          })
+        }
+
+        if(!envelope || typeof envelope !== "object" || Array.isArray(envelope)){
+          return socket.emit("e2ee-message-error",{
+            message:"An encrypted message envelope is required."
+          })
+        }
+
+        const chatDocument = await chatModel.findById(chatId).lean()
+
+        const chatOwner = chatDocument?.user||chatDocument.userQ||chatDocument.owner;;
+
+        if(!envelope || typeof envelope!=="object" || Array.isArray(envelope)){
+          return socket.emit("e2ee-message-error",{
+            message: "An encrypted message envelope required"
+          })
+        }
+
+        const validEnvelope = envelope.version === 1 && envelope.algorithm === "AES-GCM-256" && typeof envelope.keyId === "string" && envelope.keyId.length>0 && envelope.keyId.length<=200 && ["text","image"].includes(envelope.kind)&&typeof envelope.iv==="string" && envelope.iv.length>0 && envelope.cipherText.length > 0 && (envelope.mimeType==null || (typeof envelope.mimeType==="string" && envelope.mimeType.length <=150))
+
+        if(!validEnvelope){
+          return socket.emit("e2ee-message-error",{
+            message:"Invalid or oversized encrypted message envelope"
+          })
+        }
+
+        const encryptedMessage = await messageModel.create({
+          chat:chatId,
+          user:userId,
+          content:JSON.stringify(envelope),
+          type:envelope.kind==="image"?"image":"text",
+          role:"user",
+          mode:"e2ee"
+        })
+
+        try{
+
+        socket.emit("e2ee-message-saved",{
+          chat:chatId,
+          message:{
+            _id:encryptedMessage._id.toString(),
+            chat:chatId,
+            type:encryptedMessage.type,
+            role:"user",
+            mode:"e2ee",
+            content:JSON.stringify(envelope),
+            createdAt:encryptedMessage.createdAt
+          }
+        })}catch(error){
+          console.error("E2EE message save failed",error?.message||error)
+
+          socket.emit("e2ee-message-error",{
+            message:"Unable to save the encrypted message"
+          })
+        }
+
+        socket.emit("ai-message",async (messagePayload)=>{
+          const userId = socket.user._id;
+
+        const chatId = messagePayload.chat;
+
+        
+
+        const messageType = messagePayload.type || "text";
+
+        const messageMode = messagePayload.mode || "chat";
+        
 
         // =================================================
         // 1. NORMAL TEXT CHAT
@@ -1199,6 +1273,8 @@ Instructions:
             namespace: "image-generation",
           });
 
+          }
+
           // =============================================
           // SEND GENERATED IMAGE
           // =============================================
@@ -1212,7 +1288,7 @@ Instructions:
           });
 
           return;
-        }
+        })
 
         // =================================================
         // UNKNOWN REQUEST
