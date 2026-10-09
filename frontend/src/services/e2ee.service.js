@@ -150,7 +150,7 @@ export async function encryptedText(text,userId,chatId){
 
   return encryptBytes(encoder.encode(text),userId,chatId,"text","text/plain;charset=utf-8")
 }
-
+//exporting encryot file
 export async function encryptFile(file,userId,chatId){
   if(!(file instanceof Blob)){
     throw new Error("A valid attachment is required")

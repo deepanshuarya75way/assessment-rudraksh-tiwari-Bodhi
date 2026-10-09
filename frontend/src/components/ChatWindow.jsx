@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import "../styles/chat.css";
+import { decryptEnvelope, encryptedText } from "../services/e2ee.service";
 
 // =========================================================
 // SOCKET
@@ -105,7 +106,31 @@ function ChatWindow() {
     // AI RESPONSE
     // =====================================================
 
-    newSocket.on("ai-response", (data) => {
+    newSocket.on("ai-response", async(data) => {
+      const text = input.trim()
+
+      if(!text || !socket || !chatId || !userId){
+        return
+      }
+
+      try{
+        const encrypted = await encryptedText(text,userId,chatId)
+        socket.emit("e2ee-message",{
+          chat:chatId,
+          encrypted,
+        })
+      }catch(err){
+        console.err(err)
+      }
+
+      setMessages((previous)=>[...previous,{
+          id:`local`,
+          role:"user",
+          type:"text",
+          content:text,
+        }],
+        setInput("")
+      )
       console.log("AI Response:", data);
 
       setIsGenerating(false);
@@ -168,6 +193,21 @@ function ChatWindow() {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
+
+    const handleE2EEMessageSaved = (data) => {
+      setIsGenerating(false);
+    }
+
+    const handleE2EEError = (data) => {
+      setIsGenerating(false)
+
+      setMessages((previous)=>[...previous,{
+        id,role,type,content
+      }])
+    }
+
+    socketInstance.on("e2ee-message-saved",handleE2EEMessageSaved)
+    socketInstance.on("e2ee-error",handleE2EEError)
   }, [messages, isGenerating]);
 
   // =======================================================
@@ -237,6 +277,13 @@ function ChatWindow() {
   // =======================================================
 
   async function selectChat(chat) {
+
+    const decrypted = await decryptEnvelope(message.content,userId,chatId)
+    if(decrypted.kind==="image"){
+      return{
+        id,role,type,content,imageUrl
+      }
+    }
     setChatId(chat.id);
 
     setChatTitle(chat.title);
